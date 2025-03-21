@@ -1,0 +1,206 @@
+/**
+*  yazar: sıla çanga 
+*  mail: sila.canga1@ogr.sakarya.edu.tr
+*  Tarih: 02.04.2024
+*<p>
+*Depodan repo çekmek, bu repoların analizi (boş mu? ya da içinde sınıf var mı?)
+*ve benden istenilen durumları hesaplamak için çeşitli sınıflar kullandım.
+*Oluşturduğum bu sınıflar, java dosyalarının içeriğini analiz eder.
+*Bu sınıflar sayesinde kod kalitesi, okunabilirlik ve bakım kolaylığı gibi faktörler hakkında bilgi sahibi olabiliriz.
+*</p>
+*/
+
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class AnalizClass {
+
+	
+	 public static void main(String[] args) throws IOException, InterruptedException {
+	        // gitHub URL'sini al
+	        BufferedReader okuyucu = new BufferedReader(new InputStreamReader(System.in));
+	        System.out.print("GitHub deposu URL'sini girin: ");
+	        String gitRepoUrl = okuyucu.readLine();
+	        if (gitRepoUrl.endsWith(".git")) {
+	            gitRepoUrl = gitRepoUrl.substring(0, gitRepoUrl.length() - 4); // .git'i kaldırdım url'nin sonunda git'i zaten ekliyorum altta
+	        }
+
+	        // git deposunu klonla
+	        ProcessBuilder cloneProcessBuilder = new ProcessBuilder("git", "clone", gitRepoUrl + ".git"); // .git ekle
+	        cloneProcessBuilder.directory(new File(System.getProperty("user.dir"))); // Çalışma dizinini ayarla
+	        Process cloneProcess = cloneProcessBuilder.start();
+	        
+	        cloneProcess.waitFor();
+
+	        File klonlananDizin = new File(gitRepoUrl.substring(gitRepoUrl.lastIndexOf("/") + 1));
+
+	        // *.java dosyalarını bul ve analiz et
+	        javaDosyalarınıAnalizEt(klonlananDizin);
+	    }
+
+	    private static void javaDosyalarınıAnalizEt(File dizin) {
+	        File[] dosyalar = dizin.listFiles();
+	        if (dosyalar != null) {
+	            for (File dosya : dosyalar) {
+	                if (dosya.isDirectory()) {
+	                
+	                    javaDosyalarınıAnalizEt(dosya);
+	                } else if (dosya.getName().endsWith(".java") && içindeSınıfVar(dosya)) {
+	                    // java dosyasıysa ve içinde sınıf var mı analiz et
+	                    javaDosyasınıAnalizEt(dosya);
+	                }
+	            }
+	        }
+	    }
+
+	    private static boolean içindeSınıfVar(File dosya) {
+	        try {
+	            String icerik = new String(Files.readAllBytes(dosya.toPath()));
+	            // sınıf arama
+	            Pattern desen = Pattern.compile("class\\s+[a-zA-Z_][a-zA-Z0-9_]*");
+	            Matcher eşleştirici = desen.matcher(icerik);
+	            return eşleştirici.find();
+	        } catch (IOException e) {
+	            // Dosya okuma sırasında bir IOException oluşursa hatayı yakala ve işle
+	            System.err.println("Dosya okuma hatası: " + e.getMessage());
+	            return false;
+	        }
+	    }
+
+
+	    private static void javaDosyasınıAnalizEt(File dosya) {
+	        try {
+	            String icerik = new String(Files.readAllBytes(dosya.toPath()));
+	            int javadocSatırSayısı = javadocSatırSayısınıHesapla(icerik);
+	            int diğerYorumSatırıSayısı = diğerYorumSatırıSayısınıHesapla(icerik);
+	            int kodSatırıSayısı = kodSatırıSayısınıHesapla(icerik);
+	            int loc = LOCsayısınıHesapla(icerik);
+	            int fonksiyonSayısı = fonksiyonSayısınıHesapla(icerik);
+	            double yorumSapmaYüzdesi = yorumSapmaYüzdesiniHesapla(javadocSatırSayısı, diğerYorumSatırıSayısı, kodSatırıSayısı, fonksiyonSayısı);
+
+	            // yazdırma
+	            System.out.println("Sınıf: " + dosya.getName().replace(".java", ""));
+	            System.out.println("Javadoc Satır Sayısı: " + javadocSatırSayısı);
+	            System.out.println("Diğer Yorum Satır Sayısı: " + diğerYorumSatırıSayısı);
+	            System.out.println("Kod Satır Sayısı: " + kodSatırıSayısı);
+	            System.out.println("LOC: " + loc);
+	            System.out.println("Fonksiyon Sayısı: " + fonksiyonSayısı);
+	            System.out.println("Yorum Sapma Yüzdesi: %" + yorumSapmaYüzdesi);
+	            System.out.println("-----------------------------------------");
+	        } catch (IOException e) {
+	            e.printStackTrace();
+	        }
+
+	    }
+    
+    private static int javadocSatırSayısınıHesapla(String icerik) {
+        // regex
+        Pattern desen = Pattern.compile("/\\*\\*([^*]|(\\*+[^*/]))*\\*+/", Pattern.DOTALL);
+        Matcher eşleştirici = desen.matcher(icerik);
+
+        int sayı = 0;
+        while (eşleştirici.find()) {
+            String javadoc = eşleştirici.group();
+            // Satırları ayırıp say
+            String[] satırlar = javadoc.split("\r\n|\r|\n");
+            // İlk ve son satırları hariç almak için - 2
+            sayı += satırlar.length - 2;
+        }
+        return sayı;
+    }
+
+
+    private static int diğerYorumSatırıSayısınıHesapla(String icerik) {
+        // Yorum satırlarını bulmak için regex
+        Pattern desen = Pattern.compile("(?://.*|/\\*.*?\\*/|/\\*\\s*\\*/)");
+
+        Matcher eşleştirici = desen.matcher(icerik);
+
+        int sayı = 0;
+        boolean çokSatırlıYorum = false;
+        while (eşleştirici.find()) {
+            String yorum = eşleştirici.group();
+            if (yorum.startsWith("//")) {
+                sayı++;
+            } else {
+                çokSatırlıYorum = true;
+                String[] satırlar = yorum.split("\r\n|\r|\n");
+                sayı += satırlar.length;
+            }
+        }
+        
+        // Çok satırlı yorum yoksa ve tek satırlık varsa onu say
+        if (!çokSatırlıYorum && sayı > 0) {
+            sayı++;
+        }
+        return sayı;
+    }
+
+
+
+
+    private static int kodSatırıSayısınıHesapla(String icerik) {
+        // Boşlukları ve yorum satırlarını çıkarır
+        String düzeltilmişIçerik = icerik.replaceAll("/\\*.*?\\*/|//.*|(\"(?:\\\\[^\"]|\\\\\"|.)*?\")|(?s)/\\*.*?\\*/", "$1");
+        // Kod satırlarını sayma
+        String[] satırlar = düzeltilmişIçerik.split("\r\n|\r|\n");
+        int sayı = 0;
+        for (String satır : satırlar) {
+            // Boşlukları ve yorum satırlarını kontrol etme
+            if (!satır.trim().isEmpty() && !satır.trim().startsWith("//")) {
+                sayı++;
+            }
+        }
+        return sayı;
+    }
+
+ 
+    private static int LOCsayısınıHesapla(String icerik) {
+        
+        String[] satırlar = icerik.split("\r\n|\r|\n");
+        return satırlar.length;
+    }
+
+    
+    private static int fonksiyonSayısınıHesapla(String icerik) {
+        // Fonksiyonları blumak için regex
+        Pattern desen = Pattern.compile("(?m)^\\s*(?:public|protected|private|static|\\s)*\\s+\\w+\\s+\\w+\\s*\\([^)]*\\)\\s*(?:throws\\s+\\w+\\s*)?\\{?\\s*$");
+        Matcher eslestirici = desen.matcher(icerik);
+
+        int sayi = 0;
+        while (eslestirici.find()) {
+            sayi++;
+        }
+        return sayi;
+    }
+
+
+    
+    private static double yorumSapmaYüzdesiniHesapla(int javadocSatırSayısı, int diğerYorumSatırıSayısı, int kodSatırıSayısı, int fonksiyonSayısı) {
+        // Fonksiyon sayısı sıfır ise, yorum sapma yüzdesini hesaplamadan önce kontrol et
+        if (fonksiyonSayısı == 0) {
+            return 0; // Eğer fonksiyon sayısı sıfırsa, yorum sapma yüzdesini sıfır al
+        }
+
+        double YG = ((javadocSatırSayısı + diğerYorumSatırıSayısı) * 0.8) / fonksiyonSayısı;
+        double YH = (kodSatırıSayısı / fonksiyonSayısı) * 0.3;
+        
+        // YH sıfır ise, sıfıra bölme hatasını önlemek için
+        if (YH == 0) {
+            return Double.POSITIVE_INFINITY; 
+        }
+
+        return ((100 * YG) / YH) - 100;
+    }
+
+
+}
+
+
+//		https://github.com/mfadak/Odev1Ornek
